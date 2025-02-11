@@ -1,0 +1,104 @@
+from Bio.Seq import Seq  # Import the Seq class from the Biopython library.
+import pandas as pd  # Import the pandas library for data manipulation.
+import numpy as np  # Import the numpy library for numerical calculations.
+import itertools  # Import the itertools module for creating iterators.
+import os  # Import the os module for interacting with the operating system.
+
+# Define a dictionary for amino acid codons.
+codon_dict = {
+    'A': ['GCT', 'GCC', 'GCA', 'GCG'],
+    'R': ['CGT', 'CGC', 'CGA', 'CGG', 'AGA', 'AGG'],
+    'N': ['AAT', 'AAC'],
+    'D': ['GAT', 'GAC'],
+    'C': ['TGT', 'TGC'],
+    'Q': ['CAA', 'CAG'],
+    'E': ['GAA', 'GAG'],
+    'G': ['GGT', 'GGC', 'GGA', 'GGG'],
+    'H': ['CAT', 'CAC'],
+    'I': ['ATT', 'ATC', 'ATA'],
+    'L': ['TTA', 'TTG', 'CTT', 'CTC', 'CTA', 'CTG'],
+    'K': ['AAA', 'AAG'],
+    'M': ['ATG'],
+    'F': ['TTT', 'TTC'],
+    'P': ['CCT', 'CCC', 'CCA', 'CCG'],
+    'S': ['TCT', 'TCC', 'TCA', 'TCG', 'AGT', 'AGC'],
+    'T': ['ACT', 'ACC', 'ACA', 'ACG'],
+    'W': ['TGG'],
+    'Y': ['TAT', 'TAC'],
+    'V': ['GTT', 'GTC', 'GTA', 'GTG'],
+    '*': ['TGA', 'TAA', 'TAG']  # Define stop codons.
+}
+
+# Function to generate synonymous codons for a given amino acid sequence.
+def generate_synonymous_codons(aa_seq):
+    aa_seq = aa_seq.upper()  # Convert the amino acid sequence to uppercase.
+    codon_options = [codon_dict[aa] for aa in aa_seq if aa in codon_dict]  # Create a list of codon options for each amino acid.
+
+    # Generate all combinations of synonymous codons.
+    for codon_combo in itertools.product(*codon_options):
+        yield ''.join(codon_combo)  # Return the combined codons as a string.
+
+# Function to apply mutations to a given sequence.
+def apply_mutations(sequence, mutation_codon_num):
+    codons = [sequence[i:i + 3] for i in range(0, len(sequence), 3)]  # Split the sequence into codons.
+    mutated_codons = codons.copy()  # Create a copy of the original codon list.
+
+    # Randomly select indices of codons to apply mutations.
+    indices = np.random.choice(len(codons), mutation_codon_num, replace=False)
+
+    for idx in indices:
+        codon = codons[idx]  # Selected codon.
+        synonymous_codons = [c for c in codon_dict if codon in codon_dict[c]]  # List of synonymous codons.
+        if synonymous_codons:
+            new_codon = np.random.choice(codon_dict[synonymous_codons[0]])  # Randomly select a new codon.
+            mutated_codons[idx] = new_codon  # Replace the selected codon with the new codon.
+
+    mutated_seq = ''.join(mutated_codons)  # Join the mutated codons into a string.
+
+    return mutated_seq  # Return the mutated sequence.
+
+# Function to read existing sequences from a file.
+def read_existing_sequences(file_name):
+    if not os.path.exists(file_name):  # If the file does not exist, return an empty set.
+        return set()
+    df = pd.read_csv(file_name)  # Read the data from the file into a DataFrame.
+    return set(df['Mutated DNA Sequences'])  # Extract and return the mutated DNA sequences.
+
+# Main function: takes amino acid sequence, number of sequences to generate, number of codons to mutate, and filename.
+def main(aa_seq, num_sequences, mutation_codon_num, file_name):
+    selected_sequences = set()  # Set to hold selected mutated sequences.
+    existing_sequences = read_existing_sequences(file_name)  # Read existing sequences.
+
+    sequence_name_counter = len(existing_sequences) + 1  # Initialize the sequence name counter.
+
+    # If the file does not exist or is empty, create an initial DataFrame.
+    if not os.path.exists(file_name) or os.path.getsize(file_name) == 0:
+        df = pd.DataFrame(columns=['Sequence Name', 'Mutated DNA Sequences'])
+        df.to_csv(file_name, index=False)
+
+    gen = generate_synonymous_codons(aa_seq)  # Initialize the generator for synonymous codons.
+    while len(selected_sequences) < num_sequences:  # Repeat until the desired number of sequences is generated.
+        try:
+            selected_sequence = next(gen)  # Get the next synonymous codon combination.
+        except StopIteration:
+            print("No more unique sequences available.")  # Print a message if no more unique sequences are available.
+            break
+
+        # If the selected sequence is not in existing sequences, apply mutations.
+        if selected_sequence not in existing_sequences:
+            mutated_sequence = apply_mutations(selected_sequence, mutation_codon_num)  # Apply mutations.
+            if mutated_sequence not in existing_sequences:  # If the mutated sequence is not in existing sequences,
+                selected_sequences.add(mutated_sequence)  # Add it to the selected sequences.
+                existing_sequences.add(mutated_sequence)  # Add it to the existing sequences.
+                df = pd.DataFrame([[sequence_name_counter, mutated_sequence]], columns=['Sequence Name', 'Mutated DNA Sequences'])
+                df.to_csv(file_name, mode='a', header=False, index=False)  # Append to the file.
+                sequence_name_counter += 1  # Increment the counter.
+
+    print(f"The mutated synonymous DNA sequences are saved in {file_name}")  # Print completion message.
+
+# Define the amino acid sequence and other parameters.
+aa_seq = "MSKGE"  # Amino acid sequence.
+num_sequences = 2  # Number of sequences to generate.
+mutation_codon_num = 2  # Number of codons to mutate.
+file_name = "mutated_syn_seqs.csv"  # File name to save the results.
+main(aa_seq, num_sequences, mutation_codon_num, file_name)  # Call the main function.
